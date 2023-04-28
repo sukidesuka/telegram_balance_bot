@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"sort"
 )
 
 type BaseService struct {
@@ -49,7 +50,7 @@ func (s *BaseService) GetBalance() ([]*Asset, error) {
 			assets = append(assets, &Asset{
 				Symbol: asset.Asset,
 				Amount: total,
-				Value:  0,
+				Value:  decimal.Zero,
 			})
 
 		}
@@ -64,7 +65,7 @@ func (s *BaseService) GetBalance() ([]*Asset, error) {
 		assets = append(assets, &Asset{
 			Symbol: "BTC",
 			Amount: *balance,
-			Value:  0,
+			Value:  decimal.Zero,
 		})
 	}
 
@@ -77,9 +78,58 @@ func (s *BaseService) GetBalance() ([]*Asset, error) {
 		assets = append(assets, &Asset{
 			Symbol: "ETH",
 			Amount: *balance,
-			Value:  0,
+			Value:  decimal.Zero,
 		})
 	}
+
+	// aggregate assets
+	assetsMap := make(map[string]*Asset)
+	for _, asset := range assets {
+		if _, ok := assetsMap[asset.Symbol]; !ok {
+			assetsMap[asset.Symbol] = &Asset{
+				Symbol: asset.Symbol,
+				Amount: decimal.Zero,
+				Value:  decimal.Zero,
+			}
+		}
+		assetsMap[asset.Symbol].Amount = assetsMap[asset.Symbol].Amount.Add(asset.Amount)
+	}
+	assets = make([]*Asset, 0)
+	for _, asset := range assetsMap {
+		assets = append(assets, asset)
+	}
+
+	// calc market value
+	prices, err := client.NewListPricesService().Do(context.Background())
+	if err != nil {
+		return nil, err
+	}
+	priceMap := make(map[string]decimal.Decimal)
+	for _, price := range prices {
+		priceMap[price.Symbol] = decimal.RequireFromString(price.Price)
+	}
+	for _, asset := range assets {
+		if asset.Symbol == "USDT" {
+			asset.Value = asset.Amount
+			continue
+		}
+
+		stableDollars := []string{"USDT", "BUSD", "TUSD"}
+		var price decimal.Decimal
+		for _, stableDollar := range stableDollars {
+			if p, ok := priceMap[asset.Symbol+stableDollar]; ok {
+				price = p
+				break
+			}
+		}
+
+		asset.Value = asset.Amount.Mul(price)
+	}
+
+	// sort assets
+	sort.Slice(assets, func(i, j int) bool {
+		return assets[i].Value.Cmp(assets[j].Value) > 0
+	})
 
 	return assets, nil
 }
@@ -182,4 +232,32 @@ func getEthereumBalanceFromBlockchain(address string) (*decimal.Decimal, error) 
 	balance = balance.Div(decimal.NewFromFloat(1000000000000000000))
 
 	return &balance, nil
+}
+
+type ExchangeRateAPIResponse struct {
+	Provider           string             `json:"provider"`
+	WarningUpgradeToV6 string             `json:"WARNING_UPGRADE_TO_V6"`
+	Terms              string             `json:"terms"`
+	Base               string             `json:"base"`
+	Date               string             `json:"date"`
+	TimeLastUpdated    int                `json:"time_last_updated"`
+	Rates              map[string]float64 `json:"rates"`
+}
+
+func GetCnyCurrency(dist string) (float64, error) {
+	resp, err := http.Get("https://api.exchangerate-api.com/v4/latest/CNY")
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return 0, err
+	}
+
+	var exchangeRateAPIResponse ExchangeRateAPIResponse
+	err = json.Unmarshal(bodyBytes, &exchangeRateAPIResponse)
+
+	return exchangeRateAPIResponse.Rates[dist], nil
 }

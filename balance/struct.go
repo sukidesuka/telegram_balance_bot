@@ -5,5 +5,5 @@ import "github.com/shopspring/decimal"
 type Asset struct {
 	Symbol string
 	Amount decimal.Decimal
-	Value  float64
+	Value  decimal.Decimal
 }
