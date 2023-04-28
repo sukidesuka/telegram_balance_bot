@@ -39,18 +39,24 @@ func Run() {
 	for update := range updates {
 		if update.Message != nil { // If we got a message
 			logrus.Debugf("[%s] %s", update.Message.From.UserName, update.Message.Text)
+			if update.Message.Text != "/balance" {
+				continue
+			}
 
 			assets, err := balance.Service().GetBalance()
 			if err != nil {
 				logrus.Errorf("can't get balance, err: %s", err.Error())
 				continue
 			}
-			msgText := ""
+			msgText := "红豆子目前持仓情况：\n```\n"
+			msgText += fmt.Sprintf("%-6s %-10s\n", "symbol", "amount")
 			for _, asset := range assets {
-				msgText += fmt.Sprintf("%s %s\n", asset.Symbol, asset.Amount.String())
+				msgText += fmt.Sprintf("%-6s %-10s\n", asset.Symbol, asset.Amount.String())
 			}
+			msgText += "```"
 
 			msg := tgbotapi.NewMessage(update.Message.Chat.ID, msgText)
+			msg.ParseMode = "MarkdownV2"
 			msg.ReplyToMessageID = update.Message.MessageID
 
 			bot.Send(msg)

@@ -6,9 +6,12 @@ import (
 )
 
 type GlobalConfig struct {
-	ApiKey    string `yaml:"apiKey"`
-	SecretKey string `yaml:"secretKey"`
-	BotKey    string `yaml:"botKey"`
+	ApiKey            string   `yaml:"apiKey"`
+	SecretKey         string   `yaml:"secretKey"`
+	BotKey            string   `yaml:"botKey"`
+	EtherScanApiKey   string   `yaml:"etherScanApiKey"`
+	BitcoinAddresses  []string `yaml:"bitcoinAddresses"`
+	EthereumAddresses []string `yaml:"ethereumAddresses"`
 }
 
 var config *GlobalConfig
